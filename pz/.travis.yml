@@ -1,21 +1,7 @@
 language: php
-
 php:
-  - 8.1
-
-services:
-  - mysql
-
-before_install:
-  - composer self-update
-
+  - '8.0'
 install:
   - composer install
-
-before_script:
-  - cp .env.example .env  # Настроить файл окружения, если требуется
-  - php artisan key:generate  # Для Laravel, если используется
-  - php artisan migrate --seed  # Применить миграции, если нужны
-
 script:
-  - vendor/bin/phpunit --coverage-text --colors=never
+  - vendor/bin/phpunit
