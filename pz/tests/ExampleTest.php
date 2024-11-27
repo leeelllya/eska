@@ -6,8 +6,8 @@ class ExampleTest extends TestCase
 {
     public function testAddition()
     {
-        $result = 1 + 4;
-        $this->assertEquals(5, $result);
+        $result = 1 + 6;
+        $this->assertEquals(7, $result);
     }
 
     public function testSubtraction()
