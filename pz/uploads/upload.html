@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Выбор файла или директории</title>
+</head>
+<body>
+    <h1>Выберите файл или директорию для проверки</h1>
+    <input type="file" id="fileInput" webkitdirectory directory multiple>
+    <button id="uploadButton">Загрузить и проверить</button>
+    <div id="result"></div>
+
+    <script>
+        document.getElementById('uploadButton').addEventListener('click', function() {
+            const fileInput = document.getElementById('fileInput');
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '';
+
+            if (fileInput.files.length > 0) {
+                const formData = new FormData();
+                Array.from(fileInput.files).forEach(file => {
+                    formData.append('files[]', file);
+                });
+
+                fetch('check.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.text())
+                .then(data => {
+                    resultDiv.innerHTML = data;
+                })
+                .catch(error => {
+                    console.error('Ошибка:', error);
+                    resultDiv.innerHTML = 'Произошла ошибка при загрузке файлов.';
+                });
+            } else {
+                resultDiv.innerHTML = 'Файлы не выбраны.';
+            }
+        });
+    </script>
+</body>
+</html>
