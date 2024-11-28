@@ -13,6 +13,6 @@ class ExampleTest extends TestCase
     public function testSubtraction()
     {
         $result = 2 - 0;
-        $this->assertEquals(1, $result);
+        $this->assertEquals(2, $result);
     }
 }
