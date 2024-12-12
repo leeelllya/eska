@@ -74,9 +74,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_language'])) {
 
         $sql = "INSERT INTO programming_languages_pending (name) VALUES ('$name')";
         if ($conn->query($sql) === TRUE) {
-            echo "<div class='alert success'>Язык успешно добавлен и ожидает проверки.</div>";
+            echo "<div class='alert success'>Навык успешно добавлен и ожидает проверки.</div>";
         } else {
-            throw new Exception("Ошибка добавления языка: " . $conn->error);
+            throw new Exception("Ошибка добавления навыка: " . $conn->error);
         }
     } catch (Exception $e) {
         echo "<div class='alert error'>" . $e->getMessage() . "</div>";
@@ -154,9 +154,22 @@ if (isset($_GET['edit_job_id'])) {
 $programming_languages = $pending_job['programming_languages'] ?? ''; // Используем пустую строку, если значение null
 $selectedLanguages = explode(',', $programming_languages);
 
+$limit = 5;
+$page = isset($_GET['page']) ? intval($_GET['page']) : 1;
+$offset = ($page - 1) * $limit;
 
-// Получение всех одобренных вакансий, добавленных текущим работодателем
-$jobs = $conn->query("SELECT * FROM job_listings WHERE employer_id='$user_id' AND status='approved'");
+$totalQuery = $conn->query("
+    SELECT COUNT(*) AS total 
+    FROM job_listings 
+    WHERE employer_id='$user_id' AND status='approved'
+");
+$total = $totalQuery->fetch_assoc()['total'];
+$totalPages = ceil($total / $limit);
+
+$jobs = $conn->query("
+    SELECT * FROM job_listings WHERE employer_id='$user_id' AND status='approved'
+    LIMIT $limit OFFSET $offset
+");
 
 $languages = $conn->query("SELECT * FROM programming_languages");
 
@@ -328,6 +341,27 @@ $locationsForEdit = $conn->query("SELECT * FROM locations");
         .language-select option {
             padding: 10px;
         }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .pagination a {
+            padding: 10px 15px;
+            margin: 0 5px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .pagination a:hover {
+            background-color: #0056b3;
+        }
+        .pagination .active {
+            background-color: #0056b3;
+            pointer-events: none;
+        }
         </style>
 </head>
 <body>
@@ -342,10 +376,10 @@ $locationsForEdit = $conn->query("SELECT * FROM locations");
     <div class="container">
         <h2>Добро пожаловать, <?= htmlspecialchars($user['username']) ?>!</h2>
 
-        <h3>Добавить новый язык</h3>
+        <h3>Добавить новый навык</h3>
         <form action="employer_dashboard.php" method="POST" class="job-form">
-            <input type="text" name="name" placeholder="Название языка" required>
-            <button type="submit" name="add_language">Добавить язык</button>
+            <input type="text" name="name" placeholder="Название навыка" required>
+            <button type="submit" name="add_language">Добавить навык</button>
         </form>
 
         <h3>Добавить новую вакансию</h3>
@@ -366,7 +400,7 @@ $locationsForEdit = $conn->query("SELECT * FROM locations");
             </div>
 
             <div class="language-select">
-                <label for="languages">Выберите языки программирования:</label>
+                <label for="languages">Выберите ключевые навыки:</label>
                 <select name="programming_languages[]" multiple>
                     <?php
                     $allLanguages = $conn->query("SELECT * FROM programming_languages");
@@ -390,7 +424,7 @@ $locationsForEdit = $conn->query("SELECT * FROM locations");
             <strong>Описание:</strong> <?= htmlspecialchars($row['description']) ?><br>
             <strong>Требования:</strong> <?= htmlspecialchars($row['requirements']) ?><br>
             <strong>Зарплата:</strong> <?= htmlspecialchars($row['salary']) ?><br>
-            <strong>Языки программирования:</strong> <?= htmlspecialchars($row['programming_languages']) ?><br>
+            <strong>Ключевые навыки:</strong> <?= htmlspecialchars($row['programming_languages']) ?><br>
             <strong>Местоположение:</strong> <?= htmlspecialchars($row['location'] ?? '') ?><br>
             <a href="?delete_job=<?= $row['id'] ?>" class="delete-button">Удалить</a>
             <button class="edit-button" onclick="document.getElementById('edit-form-<?= $row['id'] ?>').style.display='block'">Редактировать</button>
@@ -418,7 +452,7 @@ $locationsForEdit = $conn->query("SELECT * FROM locations");
                     </div>
 
                     <div class="language-select">
-                        <label for="languages">Выберите языки программирования:</label>
+                        <label for="languages">Выберите ключевые навыки:</label>
                         <select name="programming_languages[]" multiple>
                             <?php
                             $allLanguages = $conn->query("SELECT * FROM programming_languages");
@@ -439,6 +473,19 @@ $locationsForEdit = $conn->query("SELECT * FROM locations");
         </li>
     <?php endwhile; ?>
 </ul>
+<div class="pagination">
+            <?php if ($page > 1): ?>
+                <a href="?page=<?= $page - 1 ?>">&laquo; Предыдущая</a>
+            <?php endif; ?>
+
+            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                <a href="?page=<?= $i ?>" class="<?= $i == $page ? 'active' : '' ?>"><?= $i ?></a>
+            <?php endfor; ?>
+
+            <?php if ($page < $totalPages): ?>
+                <a href="?page=<?= $page + 1 ?>">Следующая &raquo;</a>
+            <?php endif; ?>
+        </div>
     </div>
     <footer>
         <p>&copy; <?= date("Y") ?> Все права защищены.</p>

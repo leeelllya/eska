@@ -115,19 +115,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
             $existing_language = $conn->query("SELECT * FROM programming_languages WHERE name='{$pending_language['name']}'")->fetch_assoc();
             
             if ($existing_language) {
-                echo "<div class='alert error'>Язык с таким именем уже существует.</div>";
+                echo "<div class='alert error'>Навык с таким именем уже существует.</div>";
             } else {
                 // Обновляем основную запись языка
                 $update_sql = "UPDATE programming_languages SET name='{$pending_language['name']}' WHERE id={$pending_language['id']}";
                 if ($conn->query($update_sql) === TRUE) {
                     $conn->query("DELETE FROM programming_languages_pending WHERE id='$language_id'");
-                    echo "<div class='alert success'>Язык добавлен.</div>";
+                    echo "<div class='alert success'>Навык добавлен.</div>";
                 } else {
-                    echo "<div class='alert error'>Ошибка при добавлении языка: " . $conn->error . "</div>";
+                    echo "<div class='alert error'>Ошибка при добавлении навыка: " . $conn->error . "</div>";
                 }
             }
         } else {
-            echo "<div class='alert error'>Язык не найден или уже одобрен.</div>";
+            echo "<div class='alert error'>Навык не найден или уже одобрен.</div>";
         }
     } elseif ($_POST['action'] === 'reject_language') {
         // Удаляем запись из временной таблицы
@@ -140,9 +140,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
         // Удаление языка
         $sql = "DELETE FROM programming_languages WHERE id='$language_id'";
         if ($conn->query($sql) === TRUE) {
-            echo "<div class='alert success'>Язык удален.</div>";
+            echo "<div class='alert success'>Навык удален.</div>";
         } else {
-            echo "<div class='alert error'>Ошибка при удалении языка: " . $conn->error . "</div>";
+            echo "<div class='alert error'>Ошибка при удалении навыка: " . $conn->error . "</div>";
         }
     }
 }
@@ -201,16 +201,61 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
 
 
 // Получение всех пользователей (исключая администраторов)
-$users = $conn->query("SELECT * FROM users WHERE role IN ('user', 'employer')");
+//$users = $conn->query("SELECT * FROM users WHERE role IN ('user', 'employer')");
+
+$limit = 5;
+$page1 = isset($_GET['page1']) ? intval($_GET['page1']) : 1;
+$offset1 = ($page1 - 1) * $limit;
+
+$totalQuery1 = $conn->query("
+    SELECT COUNT(*) AS total 
+    FROM users WHERE role IN ('user', 'employer')
+");
+$total1 = $totalQuery1->fetch_assoc()['total'];
+$totalPages1 = ceil($total1 / $limit);
+
+$users = $conn->query("
+    SELECT * FROM users WHERE role IN ('user', 'employer')
+    LIMIT $limit OFFSET $offset1
+");
 
 // Получение всех вакансий, ожидающих проверки
 $pending_jobs = $conn->query("SELECT * FROM job_listings_pending");
-$all_jobs = $conn->query("SELECT * FROM job_listings");
+//$all_jobs = $conn->query("SELECT * FROM job_listings");
+
+$page2 = isset($_GET['page2']) ? intval($_GET['page2']) : 1;
+$offset2 = ($page2 - 1) * $limit;
+
+$totalQuery2 = $conn->query("
+    SELECT COUNT(*) AS total 
+    FROM job_listings 
+    WHERE status = 'approved'
+");
+$total2 = $totalQuery2->fetch_assoc()['total'];
+$totalPages2 = ceil($total2 / $limit);
+
+$all_jobs = $conn->query("
+    SELECT * FROM job_listings WHERE status='approved'
+    LIMIT $limit OFFSET $offset2
+");
 
 // Получение всех языков, ожидающих проверки
 $pending_languages = $conn->query("SELECT * FROM programming_languages_pending");
-$all_languages = $conn->query("SELECT * FROM programming_languages");
+//$all_languages = $conn->query("SELECT * FROM programming_languages");
+$page3 = isset($_GET['page3']) ? intval($_GET['page3']) : 1;
+$offset3 = ($page3 - 1) * $limit;
 
+$totalQuery3 = $conn->query("
+    SELECT COUNT(*) AS total 
+    FROM programming_languages
+");
+$total3 = $totalQuery3->fetch_assoc()['total'];
+$totalPages3 = ceil($total3 / $limit);
+
+$all_languages = $conn->query("
+    SELECT * FROM programming_languages
+    LIMIT $limit OFFSET $offset3
+");
 ?>
 
 <!DOCTYPE html>
@@ -393,6 +438,27 @@ $all_languages = $conn->query("SELECT * FROM programming_languages");
     .weights-form .btn-submit:hover {
         background-color: #0056b3;
     }
+    .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .pagination a {
+            padding: 10px 15px;
+            margin: 0 5px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .pagination a:hover {
+            background-color: #0056b3;
+        }
+        .pagination .active {
+            background-color: #0056b3;
+            pointer-events: none;
+        }
     </style>
     <script>
         function showTab(tabName) {
@@ -418,7 +484,7 @@ $all_languages = $conn->query("SELECT * FROM programming_languages");
         <div class="tabs">
             <button class="tab" onclick="showTab('jobs')">Управление вакансиями</button>
             <button class="tab" onclick="showTab('users')">Управление пользователями</button>
-            <button class="tab" onclick="showTab('languages')">Управление языками</button>
+            <button class="tab" onclick="showTab('languages')">Управление навыками</button>
             <button class="tab" onclick="showTab('weights')">Управление весами</button>
         </div>
 
@@ -430,7 +496,7 @@ $all_languages = $conn->query("SELECT * FROM programming_languages");
                         <strong>Название:</strong> <?= htmlspecialchars($row['title']) ?><br>
                         <strong>Описание:</strong> <?= htmlspecialchars($row['description']) ?><br>
                         <strong>Требования:</strong> <?= htmlspecialchars($row['requirements']) ?><br>
-                        <strong>Языки программирования:</strong> <?= htmlspecialchars($row['programming_languages']) ?><br>
+                        <strong>Ключевые навыки:</strong> <?= htmlspecialchars($row['programming_languages']) ?><br>
                         <strong>Зарплата:</strong> <?= htmlspecialchars($row['salary']) ?><br>
                         <strong>Местоположение:</strong> <?= htmlspecialchars($row['location']) ?><br>
                         <form action="admin_dashboard.php" method="POST">
@@ -449,7 +515,7 @@ $all_languages = $conn->query("SELECT * FROM programming_languages");
                         <strong>Название:</strong> <?= htmlspecialchars($row['title']) ?><br>
                         <strong>Описание:</strong> <?= htmlspecialchars($row['description']) ?><br>
                         <strong>Требования:</strong> <?= htmlspecialchars($row['requirements']) ?><br>
-                        <strong>Языки программирования:</strong> <?= htmlspecialchars($row['programming_languages']) ?><br>
+                        <strong>Ключевые навыки:</strong> <?= htmlspecialchars($row['programming_languages']) ?><br>
                         <strong>Зарплата:</strong> <?= htmlspecialchars($row['salary']) ?><br>
                         <strong>Местоположение:</strong> <?= htmlspecialchars($row['location']) ?><br>
                         <form action="admin_dashboard.php" method="POST">
@@ -459,6 +525,18 @@ $all_languages = $conn->query("SELECT * FROM programming_languages");
                     </li>
                 <?php endwhile; ?>
             </ul>
+            <div class="pagination">
+            <?php if ($page2 > 1): ?>
+                <a href="?tab=jobs&page2=<?= $page2 - 1 ?>">&laquo; Предыдущая</a>
+            <?php endif; ?>
+            <?php for ($i = 1; $i <= $totalPages2; $i++): ?>
+                <a href="?tab=jobs&page2=<?= $i ?>" class="<?= $i == $page2 ? 'active' : '' ?>"><?= $i ?></a>
+            <?php endfor; ?>
+            <?php if ($page2 < $totalPages2): ?>
+                <a href="?tab=jobs&page2=<?= $page2 + 1 ?>">Следующая &raquo;</a>
+            <?php endif; ?>
+        </div>
+    </div>
         </div>
 
         <div id="languages" class="tab-content">
@@ -476,7 +554,7 @@ $all_languages = $conn->query("SELECT * FROM programming_languages");
                 <?php endwhile; ?>
             </ul>
 
-            <h3>Все языки</h3>
+            <h3>Ключевые навыки</h3>
             <ul>
                 <?php while ($row = $all_languages->fetch_assoc()): ?>
                     <li class="language-item">
@@ -488,6 +566,17 @@ $all_languages = $conn->query("SELECT * FROM programming_languages");
                     </li>
                 <?php endwhile; ?>
             </ul>
+            <div class="pagination">
+            <?php if ($page3 > 1): ?>
+                <a href="?tab=languages&page3=<?= $page3 - 1 ?>">&laquo; Предыдущая</a>
+            <?php endif; ?>
+            <?php for ($i = 1; $i <= $totalPages3; $i++): ?>
+                <a href="?tab=languages&page3=<?= $i ?>" class="<?= $i == $page3 ? 'active' : '' ?>"><?= $i ?></a>
+            <?php endfor; ?>
+            <?php if ($page3 < $totalPages3): ?>
+                <a href="?tab=languages&page3=<?= $page3 + 1 ?>">Следующая &raquo;</a>
+            <?php endif; ?>
+        </div>
         </div>
 
         <div id="users" class="tab-content">
@@ -508,6 +597,17 @@ $all_languages = $conn->query("SELECT * FROM programming_languages");
                     </li>
                 <?php endwhile; ?>
             </ul>
+            <div class="pagination">
+            <?php if ($page1 > 1): ?>
+                <a href="?tab=users&page1=<?= $page1 - 1 ?>">&laquo; Предыдущая</a>
+            <?php endif; ?>
+            <?php for ($i = 1; $i <= $totalPages1; $i++): ?>
+                <a href="?tab=users&page1=<?= $i ?>" class="<?= $i == $page1 ? 'active' : '' ?>"><?= $i ?></a>
+            <?php endfor; ?>
+            <?php if ($page1 < $totalPages1): ?>
+                <a href="?tab=users&page1=<?= $page1 + 1 ?>">Следующая &raquo;</a>
+            <?php endif; ?>
+        </div>
         </div>
     </div>
     <div id="weights" class="tab-content">
@@ -536,6 +636,22 @@ $all_languages = $conn->query("SELECT * FROM programming_languages");
         <button type="submit" class="btn-submit">Обновить веса</button>
     </form>
 </div>
+
+<script>
+    // Функция переключения вкладок
+    function switchTab(tabName) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', tabName); // Устанавливаем параметр активной вкладки
+        window.location.href = url.toString(); // Перезагрузка страницы с новой вкладкой
+    }
+
+    // Сохранение состояния активной вкладки
+    document.addEventListener('DOMContentLoaded', () => {
+        const tab = new URL(window.location.href).searchParams.get('tab') || 'jobs';
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        document.getElementById(tab).classList.add('active');
+    });
+</script>
     <footer>
         <p>&copy; <?= date("Y") ?> Все права защищены.</p>
     </footer>

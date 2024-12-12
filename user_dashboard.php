@@ -32,29 +32,22 @@ if ($user['is_blocked']) {
     exit();
 }
 
-// Получение всех одобренных вакансий
-$jobs = [];
-try {
-    if ($conn->multi_query("CALL GetApprovedJobs()")) {
-        do {
-            if ($result = $conn->store_result()) {
-                while ($row = $result->fetch_assoc()) {
-                    $jobs[] = $row;
-                }
-                $result->free();
-            }
-        } while ($conn->next_result());
-    } else {
-        throw new Exception("Ошибка выполнения запроса: " . $conn->error);
-    }
-} catch (Exception $e) {
-    die("<div class='alert error'>" . $e->getMessage() . "</div>");
-}
+$limit = 5;
+$page = isset($_GET['page']) ? intval($_GET['page']) : 1;
+$offset = ($page - 1) * $limit;
 
-// Проверка, что массив $jobs не пустой
-if (empty($jobs)) {
-    echo "<div class='alert error'>Вакансии не найдены.</div>";
-}
+$totalQuery = $conn->query("
+    SELECT COUNT(*) AS total 
+    FROM job_listings 
+    WHERE status = 'approved'
+");
+$total = $totalQuery->fetch_assoc()['total'];
+$totalPages = ceil($total / $limit);
+
+$jobs = $conn->query("
+    SELECT * FROM job_listings WHERE status='approved'
+    LIMIT $limit OFFSET $offset
+");
 
 // Обработка отклика на вакансию
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['apply'])) {
@@ -108,23 +101,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['filter_salary'])) {
 }
 
 function isppt($filePath, $fileType): bool {
-    $fileContent = file_get_contents($filePath, false, null, 0, 1024); 
-    if ($fileType === 'pptx') {
-        if (stripos($fileContent, 'PowerPoint Document') === false && stripos($fileContent, '[Content_Types].xml') === false) {
+    if ($fileType === 'pdf') {
+        $fileContent = file_get_contents($filePath, false, null, 0, 1024);
+        
+        // Check for PDF header
+        if (stripos($fileContent, '%PDF-') !== 0) {
             unlink($filePath);
             throw new Exception("Ошибка: файл поврежден или не является допустимой презентацией.");
             return false;
         }
+        
         return true;
-    } elseif ($fileType === 'ppt') {
-        $mimeType = mime_content_type($filePath);
-        if ($mimeType !== 'application/vnd.ms-powerpoint') {
-            unlink($filePath); 
-            throw new Exception("Ошибка: файл поврежден или не является допустимой презентацией.");
-            return false;
-        }
-        return true;
-    }else {
+    } else {
         unlink($filePath);
         throw new Exception("Ошибка: неизвестный формат файла.");
         return false;
@@ -145,9 +133,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['resume'])) {
         }
 
         $fileType = pathinfo($filePath, PATHINFO_EXTENSION);
-        $allowedTypes = ['ppt', 'pptx'];
+        $allowedTypes = ['pdf'];
         if (!in_array(strtolower($fileType), $allowedTypes)) {
-            throw new Exception("Ошибка: разрешены только файлы PPT/PPTX.");
+            throw new Exception("Ошибка: разрешены только файлы PDF.");
         }
 
         $maxFileSize = 10 * 1024 * 1024;
@@ -179,19 +167,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['resume'])) {
             $stmt = $conn->prepare("UPDATE users SET resume_path = ? WHERE id = ?");
             $stmt->bind_param("si", $relativePath, $user_id);
             if (!$stmt->execute()) {
-                throw new Exception("Ошибка базы данных при сохранении пути к презентации.");
+                throw new Exception("Ошибка базы данных при сохранении пути к резюме.");
             }
         }
           
 
-        // $relativePath = 'uploads/' . $fileName;
-        // $stmt = $conn->prepare("UPDATE users SET resume_path = ? WHERE id = ?");
-        // $stmt->bind_param("si", $relativePath, $user_id);
-        // if (!$stmt->execute()) {
-        //     throw new Exception("Ошибка базы данных при сохранении пути к презентации.");
-        // }
-
-        echo "<div class='alert'>Презентация успешно загружена!</div>";
+        echo "<div class='alert'>Резюме успешно загружена!</div>";
     } catch (Exception $e) {
         echo "<div class='alert error'>" . htmlspecialchars($e->getMessage()) . "</div>";
     }
@@ -208,11 +189,11 @@ if (isset($_POST['open_resume'])) {
 
     try {
         if (empty($user['resume_path'])) {
-            throw new Exception("Презентация еще не загружена.");
+            throw new Exception("Резюме еще не загружена.");
         }
 
         if (!file_exists($fullPath)) {
-            throw new Exception("Файл с презентацией не найден или был удален.");
+            throw new Exception("Файл с резюме не найден или был удален.");
         }
 
         if (!is_readable($fullPath) || !is_writable($fullPath)) {
@@ -232,12 +213,12 @@ if (isset($_POST['open_resume'])) {
         $fileContent = file_get_contents($fullPath, false, null, 0, 1024); 
     
         if (isppt($fullPath, $fileType)) {
-        header('Content-Type: application/vnd.ms-powerpoint; charset=UTF-8');
-        $filename = basename($fullPath);
-        header('Content-Disposition: inline; filename*=UTF-8\'\'' . rawurlencode($filename));
-        header('Content-Length: ' . filesize($fullPath));
-        readfile($fullPath);
-        exit;
+            header('Content-Type: application/pdf; charset=UTF-8');
+            $filename = basename($fullPath);
+            header('Content-Disposition: inline; filename*=UTF-8\'\'' . rawurlencode($filename));
+            header('Content-Length: ' . filesize($fullPath));
+            readfile($fullPath);
+            exit;
         }
 
     } catch (Exception $e) {
@@ -371,6 +352,27 @@ if (isset($_POST['open_resume'])) {
             right: 15px;
             top: 15px;
         }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .pagination a {
+            padding: 10px 15px;
+            margin: 0 5px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .pagination a:hover {
+            background-color: #0056b3;
+        }
+        .pagination .active {
+            background-color: #0056b3;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -387,15 +389,15 @@ if (isset($_POST['open_resume'])) {
 
         <a href="user_applications_dashboard.php" class="button">Посмотреть мои отклики</a>
 
-        <h3>Загрузить презентацию</h3>
+        <h3>Загрузить резюме</h3>
             <form action="user_dashboard.php" method="POST" enctype="multipart/form-data">
-                <input type="file" name="resume" accept=".ppt,.pptx" required>
+                <input type="file" name="resume" accept=".pdf" required>
                 <button type="submit">Загрузить</button>
             </form>
 
 
                 <form action="user_dashboard.php" method="POST">
-                    <button type="submit" name="open_resume">Открыть мою презентацию</button>
+                    <button type="submit" name="open_resume">Открыть мое резюме</button>
                 </form>
 
 
@@ -424,7 +426,7 @@ if (isset($_POST['open_resume'])) {
                             <strong>Название:</strong> <?= htmlspecialchars($row['title']) ?><br>
                             <strong>Описание:</strong> <?= htmlspecialchars($row['description']) ?><br>
                             <strong>Требования:</strong> <?= htmlspecialchars($row['requirements']) ?><br>
-                            <strong>Языки программирования:</strong> <?= htmlspecialchars($row['programming_languages']) ?><br>
+                            <strong>Ключевые навыки:</strong> <?= htmlspecialchars($row['programming_languages']) ?><br>
                             <strong>Зарплата:</strong> <?= htmlspecialchars($row['salary']) ?><br>
                             <strong>Местоположение:</strong> <?= htmlspecialchars($row['location']) ?>
                             <form action="user_dashboard.php" method="POST" style="display:inline;">
@@ -442,7 +444,7 @@ if (isset($_POST['open_resume'])) {
                             <strong>Название:</strong> <?= htmlspecialchars($row['title']) ?><br>
                             <strong>Описание:</strong> <?= htmlspecialchars($row['description']) ?><br>
                             <strong>Требования:</strong> <?= htmlspecialchars($row['requirements']) ?><br>
-                            <strong>Языки программирования:</strong> <?= htmlspecialchars($row['programming_languages']) ?><br>
+                            <strong>Ключевые навыки:</strong> <?= htmlspecialchars($row['programming_languages']) ?><br>
                             <strong>Зарплата:</strong> <?= htmlspecialchars($row['salary']) ?><br>
                             <strong>Местоположение:</strong> <?= htmlspecialchars($row['location']) ?>
                             <form action="user_dashboard.php" method="POST" style="display:inline;">
@@ -462,10 +464,9 @@ if (isset($_POST['open_resume'])) {
                         <?php foreach ($jobs as $row): ?>
                             <li>
                                 <strong>Название:</strong> <?= htmlspecialchars($row['title']) ?><br>
-                                <strong>Работодатель:</strong> <?= htmlspecialchars($row['username']) ?><br>
                                 <strong>Описание:</strong> <?= htmlspecialchars($row['description']) ?><br>
                                 <strong>Требования:</strong> <?= htmlspecialchars($row['requirements']) ?><br>
-                                <strong>Языки программирования:</strong> <?= htmlspecialchars($row['programming_languages']) ?><br>
+                                <strong>Ключевые навыки:</strong> <?= htmlspecialchars($row['programming_languages']) ?><br>
                                 <strong>Местоположение:</strong> <?= htmlspecialchars($row['location'] ?? '') ?><br>
                                 <strong>Зарплата:</strong> <?= htmlspecialchars($row['salary']) ?>
                                 <form action="user_dashboard.php" method="POST" style="display:inline;">
@@ -478,6 +479,22 @@ if (isset($_POST['open_resume'])) {
                         <li>Вакансии не найдены.</li>
                     <?php endif; ?>
                 </ul>
+        <?php if ($jobs->num_rows == 0): ?>
+            <p>Нет вакансий.</p>
+        <?php endif; ?>
+         <div class="pagination">
+            <?php if ($page > 1): ?>
+                <a href="?page=<?= $page - 1 ?>">&laquo; Предыдущая</a>
+            <?php endif; ?>
+
+            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                <a href="?page=<?= $i ?>" class="<?= $i == $page ? 'active' : '' ?>"><?= $i ?></a>
+            <?php endfor; ?>
+
+            <?php if ($page < $totalPages): ?>
+                <a href="?page=<?= $page + 1 ?>">Следующая &raquo;</a>
+            <?php endif; ?>
+        </div>
         <?php endif; ?>
     </div>
     <footer>

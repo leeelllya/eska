@@ -10,7 +10,6 @@ $dbname = "birzha_truda";
 try {
     $conn = new mysqli($servername, $username, $password, $dbname);
     
-    // Проверка соединения
     if ($conn->connect_error) {
         throw new Exception("Ошибка соединения: " . $conn->connect_error);
     }
@@ -18,36 +17,23 @@ try {
     die("<div class='alert error'>Не удалось подключиться к базе данных. Пожалуйста, проверьте состояние сервера MySQL.</div>");
 }
 
-// Массив для хранения сообщений об ошибках
 $errors = [];
 
-// Обработка отправки формы регистрации
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['register'])) {
     $username = trim($conn->real_escape_string($_POST['username']));
     $email = trim($conn->real_escape_string($_POST['email']));
     $password = $_POST['password'];
-    $role = trim($conn->real_escape_string($_POST['role'])); // Получаем роль пользователя
+    $role = trim($conn->real_escape_string($_POST['role']));
 
-    // Проверка на пустые или пробельные строки
-    if (empty($username)) {
-        $errors[] = "Имя пользователя не может быть пустым или содержать только пробелы.";
-    }
-    if (empty($email)) {
-        $errors[] = "Адрес электронной почты не может быть пустым или содержать только пробелы.";
-    }
-    if (empty($password)) {
-        $errors[] = "Пароль не может быть пустым или содержать только пробелы.";
-    }
-    if (empty($role)) {
-        $errors[] = "Роль пользователя не может быть пустой или содержать только пробелы.";
+    // Валидация
+    if (empty($username) || empty($email) || empty($password) || empty($role)) {
+        $errors[] = "Все поля должны быть заполнены.";
     }
 
-    // Проверка формата почты, если поле не пустое
     if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $errors[] = "Введите корректный адрес электронной почты.";
     }
 
-    // Проверка пароля на требования к сложности, если он не пустой
     if (!empty($password) && (!preg_match('/^[a-zA-Z0-9]*$/', $password) || 
                               !preg_match('/[A-Z]/', $password) || 
                               !preg_match('/[0-9]/', $password) || 
@@ -55,24 +41,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['register'])) {
         $errors[] = "Пароль должен содержать только латинские буквы и цифры, содержать хотя бы одну заглавную букву и цифру и состоять не менее, чем из 8 символов.";
     }
 
-    // Если ошибок нет, продолжаем регистрацию
     if (empty($errors)) {
-        // Хеширование пароля
         $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-
-        // Проверка на уникальность email
         $checkEmail = $conn->query("SELECT * FROM users WHERE email='$email'");
         if ($checkEmail === FALSE) {
             $errors[] = "Ошибка проверки email: " . $conn->error;
         } elseif ($checkEmail->num_rows == 0) {
-            // Вставка нового пользователя
             $sql = "INSERT INTO users (username, email, password, role) VALUES ('$username', '$email', '$hashed_password', '$role')";
             if ($conn->query($sql) === TRUE) {
-                // Успешная регистрация
-                $_SESSION['user_id'] = $conn->insert_id; // Сохраняем ID пользователя в сессии
-                $_SESSION['role'] = $role; // Сохраняем роль пользователя в сессии
-            
-                // Перенаправление на соответствующую страницу в зависимости от роли
+                $_SESSION['user_id'] = $conn->insert_id;
+                $_SESSION['role'] = $role;
+                
+                // Перенаправление на соответствующую страницу
                 if ($role === 'admin') {
                     header("Location: admin_dashboard.php");
                 } elseif ($role === 'employer') {
@@ -90,9 +70,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['register'])) {
     }
 }
 
-
 $conn->close();
 ?>
+
 
 <!DOCTYPE html>
 <html lang="ru">
