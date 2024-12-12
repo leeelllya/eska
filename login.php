@@ -25,6 +25,7 @@ $errors = [];
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $email = $conn->real_escape_string(trim($_POST['email']));
     $password = $_POST['password'];
+    $remember = isset($_POST['remember']);
 
     // Получение данных о пользователе
     $sql = "SELECT * FROM users WHERE email='$email'";
@@ -40,7 +41,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $_SESSION['username'] = $user['username'];
             $_SESSION['email'] = $user['email'];
             $_SESSION['role'] = $user['role']; // Сохраняем роль в сессии
+
+            // Если выбрана опция "Запомнить меня"
+            if ($remember) {
+                $token = bin2hex(random_bytes(32));
+                $expiry = time() + (30 * 24 * 60 * 60); // Токен действителен 30 дней
             
+                // Сохранение токена в базе данных
+                $updateTokenSql = "UPDATE users SET remember_token='$token' WHERE id='{$user['id']}'";
+                if ($conn->query($updateTokenSql) === FALSE) {
+                    $errors[] = "Не удалось сохранить токен: " . $conn->error;
+                } else {
+                    // Установка cookie с токеном
+                    if (setcookie("remember_token", $token, $expiry, "/", "", true, true)) {
+                        echo "Кука создана.<br>";
+                    } else {
+                        echo "Не удалось создать куку.<br>";
+                    }
+                }
+            }
+
             // Перенаправление на соответствующую панель в зависимости от роли
             if ($user['role'] === 'admin') {
                 header("Location: admin_dashboard.php");
@@ -55,6 +75,31 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
     } else {
         $errors[] = "Пользователь с таким email не найден.";
+    }
+}
+
+// Проверка токена при загрузке страницы
+if (isset($_COOKIE['remember_token'])) {
+    $token = $conn->real_escape_string($_COOKIE['remember_token']);
+    $sql = "SELECT * FROM users WHERE remember_token='$token'";
+    $result = $conn->query($sql);
+
+    if ($result && $result->num_rows > 0) {
+        $user = $result->fetch_assoc();
+        $_SESSION['user_id'] = $user['id'];
+        $_SESSION['username'] = $user['username'];
+        $_SESSION['email'] = $user['email'];
+        $_SESSION['role'] = $user['role'];
+
+        // Перенаправление на соответствующую панель
+        if ($user['role'] === 'admin') {
+            header("Location: admin_dashboard.php");
+        } elseif ($user['role'] === 'employer') {
+            header("Location: employer_dashboard.php");
+        } else {
+            header("Location: user_dashboard.php");
+        }
+        exit();
     }
 }
 
@@ -134,6 +179,15 @@ $conn->close();
         a:hover {
             text-decoration: underline;
         }
+        .remember {
+            display: flex;
+            align-items: center;
+            font-size: 14px;
+        }
+        .remember input {
+            margin-right: 5px;
+            width: auto;
+        }
     </style>
 </head>
 <body>
@@ -151,6 +205,10 @@ $conn->close();
         <form action="login.php" method="POST">
             <input type="email" name="email" placeholder="Email" required>
             <input type="password" name="password" placeholder="Пароль" required>
+            <div class="remember">
+                <input type="checkbox" name="remember" id="remember">
+                <label for="remember">Запомнить меня</label>
+            </div>
             <button type="submit" name="login">Войти</button>
         </form>
         <a href="register.php">Нет аккаунта? Зарегистрируйтесь!</a>

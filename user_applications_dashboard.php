@@ -18,17 +18,33 @@ try {
 } catch (Exception $e) {
     die("<div class='alert error'>Не удалось подключиться к базе данных.</div>");
 }
-
 $user_id = $_SESSION['user_id'];
 
-// Получение всех откликов текущего пользователя
+$limit = 5;
+$page = isset($_GET['page']) ? intval($_GET['page']) : 1;
+$offset = ($page - 1) * $limit;
+
+$totalQuery = $conn->query("
+    SELECT COUNT(*) AS total 
+    FROM applications 
+    WHERE user_id = '$user_id'
+");
+$total = $totalQuery->fetch_assoc()['total'];
+$totalPages = ceil($total / $limit);
+
 $applications = $conn->query("
     SELECT a.id, a.application_date, jl.title, a.status, users.username
     FROM applications a 
     JOIN job_listings jl ON a.job_listing_id = jl.id 
     JOIN users ON jl.employer_id = users.id
     WHERE a.user_id = '$user_id'
+    ORDER BY a.application_date DESC
+    LIMIT $limit OFFSET $offset
 ");
+
+if ($applications === false) {
+    die("<div class='alert error'>Ошибка выполнения запроса: " . $conn->error . "</div>");
+}
 
 // Удаление отклика
 if (isset($_GET['delete_application'])) {
@@ -155,6 +171,27 @@ if (isset($_GET['delete_application'])) {
         .delete-button:hover {
             background-color: #c82333;
         }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .pagination a {
+            padding: 10px 15px;
+            margin: 0 5px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .pagination a:hover {
+            background-color: #0056b3;
+        }
+        .pagination .active {
+            background-color: #0056b3;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -181,6 +218,19 @@ if (isset($_GET['delete_application'])) {
         <?php if ($applications->num_rows == 0): ?>
             <p>Нет откликов на ваши вакансии.</p>
         <?php endif; ?>
+         <div class="pagination">
+            <?php if ($page > 1): ?>
+                <a href="?page=<?= $page - 1 ?>">&laquo; Предыдущая</a>
+            <?php endif; ?>
+
+            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                <a href="?page=<?= $i ?>" class="<?= $i == $page ? 'active' : '' ?>"><?= $i ?></a>
+            <?php endfor; ?>
+
+            <?php if ($page < $totalPages): ?>
+                <a href="?page=<?= $page + 1 ?>">Следующая &raquo;</a>
+            <?php endif; ?>
+        </div>
         <a href="user_dashboard.php" class="button">Вернуться в личный кабинет</a>
     </div>
     <footer>

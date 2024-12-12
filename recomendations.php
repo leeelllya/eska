@@ -63,28 +63,50 @@ if (!empty($topLanguages)) {
     $langConditions = implode(' OR ', $likeConditions);
 }
 
-// 3. Построение запроса на рекомендации с учетом весов
-$query = "SELECT *, 
-                ROUND((CASE WHEN $langConditions THEN (1 - (3 - {$weights['programming_languages']})) ELSE 0 END), 2) AS lang_weight,
-                ROUND((CASE WHEN salary >= $userSalaryMin THEN (1 - (3 - {$weights['salary']})) ELSE 0 END), 2) AS salary_weight,
-                ROUND((CASE WHEN location LIKE '%$userLocationPref%' THEN (1 - (3 - {$weights['location']})) ELSE 0 END), 2) AS location_weight,
-                ROUND(
-                    COALESCE((CASE WHEN $langConditions THEN (1 - (3 - {$weights['programming_languages']})) ELSE 0 END), 0) +
-                    COALESCE((CASE WHEN salary >= $userSalaryMin THEN (1 - (3 - {$weights['salary']})) ELSE 0 END), 0) +
-                    COALESCE((CASE WHEN location LIKE '%$userLocationPref%' THEN (1 - (3 - {$weights['location']})) ELSE 0 END), 0),
-                    2
-                ) AS total_weight
-          FROM job_listings 
-          WHERE status = 'approved' 
-          AND id NOT IN (
-              SELECT job_listing_id 
-              FROM applications 
-              WHERE user_id = $user_id
-          )
-          ORDER BY total_weight DESC";
 
+$limit = 5;
+$page = isset($_GET['page']) ? intval($_GET['page']) : 1;
+$offset = ($page - 1) * $limit;
 
+$totalQuery = $conn->query("
+SELECT COUNT(*) AS total
+    FROM job_listings 
+    WHERE status = 'approved' 
+    AND id NOT IN (
+        SELECT job_listing_id 
+        FROM applications 
+        WHERE user_id = $user_id
+    );
+");
+$total = $totalQuery->fetch_assoc()['total'];
+$totalPages = ceil($total / $limit);
+
+// Составляем строку запроса
+$query = "
+    SELECT *, 
+           ROUND((CASE WHEN $langConditions THEN (1 - (3 - {$weights['programming_languages']})) ELSE 0 END), 2) AS lang_weight,
+           ROUND((CASE WHEN salary >= $userSalaryMin THEN (1 - (3 - {$weights['salary']})) ELSE 0 END), 2) AS salary_weight,
+           ROUND((CASE WHEN location LIKE '%$userLocationPref%' THEN (1 - (3 - {$weights['location']})) ELSE 0 END), 2) AS location_weight,
+           ROUND(
+               COALESCE((CASE WHEN $langConditions THEN (1 - (3 - {$weights['programming_languages']})) ELSE 0 END), 0) +
+               COALESCE((CASE WHEN salary >= $userSalaryMin THEN (1 - (3 - {$weights['salary']})) ELSE 0 END), 0) +
+               COALESCE((CASE WHEN location LIKE '%$userLocationPref%' THEN (1 - (3 - {$weights['location']})) ELSE 0 END), 0),
+               2
+           ) AS total_weight
+    FROM job_listings 
+    WHERE status = 'approved' 
+    AND id NOT IN (
+        SELECT job_listing_id 
+        FROM applications 
+        WHERE user_id = $user_id
+    )
+    ORDER BY total_weight DESC
+    LIMIT $limit OFFSET $offset
+";
+
+// Выполняем запрос
 $recommendations = $conn->query($query);
+
 ?>
 
 <!DOCTYPE html>
@@ -146,6 +168,27 @@ $recommendations = $conn->query($query);
             background-color: #cce5ff;
             color: #004085;
         }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .pagination a {
+            padding: 10px 15px;
+            margin: 0 5px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .pagination a:hover {
+            background-color: #0056b3;
+        }
+        .pagination .active {
+            background-color: #0056b3;
+            pointer-events: none;
+        }
         </style>
 </head>
 <body>
@@ -167,7 +210,7 @@ $recommendations = $conn->query($query);
                     <strong>Название:</strong> <?= htmlspecialchars($job['title']) ?><br>
                     <strong>Описание:</strong> <?= htmlspecialchars($job['description']) ?><br>
                     <strong>Требования:</strong> <?= htmlspecialchars($job['requirements']) ?><br>
-                    <strong>Языки программирования:</strong> <?= htmlspecialchars($job['programming_languages']) ?><br>
+                    <strong>Ключевые навыки:</strong> <?= htmlspecialchars($job['programming_languages']) ?><br>
                     <strong>Зарплата:</strong> <?= htmlspecialchars($job['salary']) ?><br>
                     <strong>Местоположение:</strong> <?= htmlspecialchars($job['location']) ?><br>
                     <!-- <strong>Суммарный вес:</strong> <?= htmlspecialchars($job['total_weight']) ?><br> -->
@@ -177,6 +220,19 @@ $recommendations = $conn->query($query);
     <?php else: ?>
         <p>На данный момент рекомендаций нет.</p>
     <?php endif; ?>
+    <div class="pagination">
+            <?php if ($page > 1): ?>
+                <a href="?page=<?= $page - 1 ?>">&laquo; Предыдущая</a>
+            <?php endif; ?>
+
+            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                <a href="?page=<?= $i ?>" class="<?= $i == $page ? 'active' : '' ?>"><?= $i ?></a>
+            <?php endfor; ?>
+
+            <?php if ($page < $totalPages): ?>
+                <a href="?page=<?= $page + 1 ?>">Следующая &raquo;</a>
+            <?php endif; ?>
+        </div>
 </div>
 </body>
 </html>

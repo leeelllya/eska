@@ -23,14 +23,29 @@ $user_id = $_SESSION['user_id'];
 $userQuery = $conn->query("SELECT username FROM users WHERE id='$user_id'");
 $user = $userQuery->fetch_assoc();
 
-// Получение всех откликов на вакансии работодателя
+
+$limit = 5;
+$page = isset($_GET['page']) ? intval($_GET['page']) : 1;
+$offset = ($page - 1) * $limit;
+
+$totalQuery = $conn->query("
+SELECT COUNT(*) AS total
+FROM applications a
+JOIN job_listings jl ON a.job_listing_id = jl.id
+JOIN users u ON a.user_id = u.id;
+");
+$total = $totalQuery->fetch_assoc()['total'];
+$totalPages = ceil($total / $limit);
+
 $applications = $conn->query("
-    SELECT a.id AS application_id, a.application_date, a.status, jl.title, u.username 
+        SELECT a.id AS application_id, a.application_date, a.status, jl.title, u.username 
     FROM applications a 
     JOIN job_listings jl ON a.job_listing_id = jl.id 
     JOIN users u ON a.user_id = u.id 
     WHERE jl.employer_id = '$user_id'
+    LIMIT $limit OFFSET $offset
 ");
+
 
 // Проверка успешности выполнения запроса
 if ($applications === false) {
@@ -49,6 +64,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     header("Location: applications_dashboard.php");
     exit();
 }
+
+
 ?>
 
 
@@ -166,6 +183,44 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             margin-top: 20px;
             border-top: 1px solid #ddd;
         }
+        .view-resume-btn {
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: #007bff;
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+    transition: background-color 0.3s ease;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.view-resume-btn:hover {
+    background-color: #0056b3;
+}
+
+.pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .pagination a {
+            padding: 10px 15px;
+            margin: 0 5px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .pagination a:hover {
+            background-color: #0056b3;
+        }
+        .pagination .active {
+            background-color: #0056b3;
+            pointer-events: none;
+        }
+
     </style>
 </head>
 <body>
@@ -181,33 +236,50 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <h2>Добро пожаловать, <?= htmlspecialchars($user['username']) ?>!</h2>
         <h3>Ваши отклики на вакансии</h3>
         <ul>
-            <?php while ($row = $applications->fetch_assoc()): ?>
-                <li>
-                    <strong>Кандидат:</strong> <?= htmlspecialchars($row['username']) ?><br>
-                    <strong>Вакансия:</strong> <?= htmlspecialchars($row['title']) ?><br>
-                    <strong>Дата отклика:</strong> <?= htmlspecialchars($row['application_date']) ?><br>
-                    <strong>Статус:</strong> 
-                    <span class="status <?= htmlspecialchars($row['status']) ?>">
-                        <?= $row['status'] === 'pending' ? 'В ожидании' : ($row['status'] === 'approved' ? 'Одобрено' : 'Отклонено') ?>
-                    </span>
+        <?php while ($row = $applications->fetch_assoc()): ?>
+    <li>
+        <strong>Кандидат:</strong> <?= htmlspecialchars($row['username']) ?><br>
+        <strong>Вакансия:</strong> <?= htmlspecialchars($row['title']) ?><br>
+        <strong>Дата отклика:</strong> <?= htmlspecialchars($row['application_date']) ?><br>
+        <strong>Статус:</strong> 
+        <span class="status <?= htmlspecialchars($row['status']) ?>">
+            <?= $row['status'] === 'pending' ? 'В ожидании' : ($row['status'] === 'approved' ? 'Одобрено' : 'Отклонено') ?>
+        </span>
 
-                    <?php if ($row['status'] == 'pending'): ?>
-                        <div class="action-buttons">
-                            <form action="applications_dashboard.php" method="POST" style="display:inline;">
-                                <input type="hidden" name="application_id" value="<?= $row['application_id'] ?>">
-                                <button type="submit" name="approve_application" class="approve-btn">Одобрить</button>
-                                <button type="submit" name="reject_application" class="reject-btn">Отклонить</button>
-                            </form>
-                        </div>
-                    <?php else: ?>
-                        <em>Отклик <?= $row['status'] == 'approved' ? 'одобрен' : 'отклонен' ?></em>
-                    <?php endif; ?>
-                </li>
-            <?php endwhile; ?>
+        <?php if ($row['status'] == 'pending'): ?>
+            <div class="action-buttons">
+                <form action="applications_dashboard.php" method="POST" style="display:inline;">
+                    <input type="hidden" name="application_id" value="<?= $row['application_id'] ?>">
+                    <button type="submit" name="approve_application" class="approve-btn">Одобрить</button>
+                    <button type="submit" name="reject_application" class="reject-btn">Отклонить</button>
+                </form>
+            </div>
+        <?php endif; ?>
+
+<?php if (!empty($row['resume_path'])): ?>
+    <a href="view_resume.php?user_id=<?= $row['user_id'] ?>" class="view-resume-btn">Просмотреть резюме</a>
+<?php endif; ?>
+
+
+    </li>
+<?php endwhile; ?>
         </ul>
         <?php if ($applications->num_rows == 0): ?>
             <p>Нет откликов на ваши вакансии.</p>
         <?php endif; ?>
+        <div class="pagination">
+            <?php if ($page > 1): ?>
+                <a href="?page=<?= $page - 1 ?>">&laquo; Предыдущая</a>
+            <?php endif; ?>
+
+            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                <a href="?page=<?= $i ?>" class="<?= $i == $page ? 'active' : '' ?>"><?= $i ?></a>
+            <?php endfor; ?>
+
+            <?php if ($page < $totalPages): ?>
+                <a href="?page=<?= $page + 1 ?>">Следующая &raquo;</a>
+            <?php endif; ?>
+        </div>
     </div>
     <footer>
         <p>&copy; <?= date("Y") ?> Все права защищены.</p>
